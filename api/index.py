@@ -9,5 +9,12 @@ if ROOT_DIR not in sys.path:
 os.environ["VERCEL"] = "1"
 os.environ["DB_PATH"] = "/tmp/unesr_aulas.db"
 
-# Importen laeng ti app a saan a mangpataray iti dadduma a makadadael a setup
+# Inicializar la base de datos en /tmp antes de importar la app
+try:
+    from src.infrastructure.database.seeder import seed_database
+    if not os.path.exists("/tmp/unesr_aulas.db"):
+        seed_database("/tmp/unesr_aulas.db")
+except Exception as exc:
+    print(f"[Seeder Warning] {exc}")
+
 from src.presentation.main import app
