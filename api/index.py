@@ -18,3 +18,9 @@ except Exception as exc:
     print(f"[Seeder Notice] {exc}")
 
 from src.presentation.main import app
+from fastapi.responses import RedirectResponse
+
+# Forzar redirección directa a la cartelera si se entra a la raíz
+@app.get("/", include_in_schema=False)
+async def vercel_root():
+    return RedirectResponse(url="/cartelera", status_code=302)
