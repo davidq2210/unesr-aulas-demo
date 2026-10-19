@@ -1,3 +1,8 @@
+
+def _get_active_db_path():
+if os.environ.get("VERCEL") == "1":
+    return "/tmp/unesr_aulas.db"
+return os.environ.get("DB_PATH", "unesr_aulas.db")
 from fastapi.responses import JSONResponse
 import os
 import sys
@@ -128,7 +133,7 @@ def handle_permiso_denegado(request: Request, exc: PermisoDenegadoError):
 @app.post("/api/v1/auth/login", response_model=LoginResponse)
 def login(req: LoginRequest, request: Request):
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     user_repo = SqliteUsuarioRepository(conn)
     user = user_repo.obtener_por_username(req.username)
     conn.close()
@@ -163,7 +168,7 @@ def consultar_cartelera(
 ):
     fecha_consulta = date.fromisoformat(fecha) if fecha else date.today()
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     adapter = SqliteCarteleraQueryAdapter(conn)
     filtro = ConsultarCarteleraFiltroDTO(fecha=fecha_consulta, aula_id=aula_id)
     items = adapter.consultar(filtro)
@@ -200,7 +205,7 @@ def consultar_cartelera_semanal(
         f_inicio = f_inicio - timedelta(days=f_inicio.weekday())
 
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     adapter = SqliteCarteleraQueryAdapter(conn)
     items = adapter.consultar_semanal(f_inicio, aula_id)
     conn.close()
@@ -228,7 +233,7 @@ def consultar_cartelera_semanal(
 @app.get("/api/v1/aulas")
 def listar_aulas(request: Request):
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     repo = SqliteAulaRepository(conn)
     aulas = repo.listar_todas()
     conn.close()
@@ -251,7 +256,7 @@ def crear_aula(
     user=Depends(require_role(["DIRECTIVO", "COORDINADOR"]))
 ):
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     repo = SqliteAulaRepository(conn)
     aula = Aula(
         id=None,
@@ -299,7 +304,7 @@ def cambiar_estado_aula(
 @app.get("/api/v1/catalogo")
 def obtener_catalogo(request: Request, nivel: Optional[str] = None):
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     repo = SqliteCatalogoRepository(conn)
     carreras = repo.listar_carreras(nivel=nivel)
     materias = repo.listar_materias()
@@ -320,7 +325,7 @@ def agregar_docente(
     user=Depends(require_role(["DIRECTIVO", "COORDINADOR"]))
 ):
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     repo = SqliteCatalogoRepository(conn)
     docente = Docente(id=None, cedula=req.cedula, nombres=req.nombres, apellidos=req.apellidos, email=req.email, activo=True)
     guardado = repo.guardar_docente(docente)
@@ -341,7 +346,7 @@ def agregar_materia(
     user=Depends(require_role(["DIRECTIVO", "COORDINADOR"]))
 ):
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     repo = SqliteCatalogoRepository(conn)
     materia = Materia(id=None, carrera_id=req.carrera_id, codigo=req.codigo, nombre=req.nombre)
     guardada = repo.guardar_materia(materia)
@@ -409,7 +414,7 @@ def eliminar_reserva(
     user=Depends(require_role(["DIRECTIVO", "COORDINADOR", "PROFESOR"]))
 ):
     db_path = get_db_path(request)
-    conn = get_db_connection(db_path)
+    conn = get_db_connection(_get_active_db_path())
     repo = SqliteReservaRepository(conn)
     reserva = repo.obtener_por_id(reserva_id)
     if not reserva:
