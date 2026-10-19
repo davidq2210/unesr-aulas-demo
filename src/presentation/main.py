@@ -1,3 +1,4 @@
+from fastapi.responses import JSONResponse
 import os
 import sys
 from datetime import date, time, timedelta
@@ -449,3 +450,10 @@ def login_view():
 @app.get("/panel", response_class=HTMLResponse)
 def panel_view():
     return HTMLResponse(content=PANEL_HTML)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+return JSONResponse(
+    status_code=500,
+    content={"detail": str(exc), "type": exc.__class__.__name__}
+)
