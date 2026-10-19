@@ -467,23 +467,24 @@ return JSONResponse(
 
 
 
+
 @app.post("/login")
-async def login_seguro(request: Request):
+async def login(request: Request):
     from fastapi.responses import JSONResponse
     try:
         data = {}
-        if "application/json" in request.headers.get("content-type", ""):
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
             data = await request.json()
         else:
             form = await request.form()
             data = dict(form)
-            
+
         username = str(data.get("username", "")).strip().lower()
         password = str(data.get("password", "")).strip()
-        
-        # Validación local sin tocar la base de datos (evita errores de lectura en Vercel)
+
         if username in ["admin", "directivo"] and password in ["admin", "admin123", "unesr2026"]:
-            res = JSONResponse(
+            response = JSONResponse(
                 status_code=200,
                 content={
                     "status": "success",
@@ -493,9 +494,10 @@ async def login_seguro(request: Request):
                     "redirect_url": "/cartelera"
                 }
             )
-            res.set_cookie("session_token", "demo-token-unesr", path="/")
-            return res
-            
-        return JSONResponse(status_code=401, content={"detail": "Credenciales inválidas", "status": "error"})
+            response.set_cookie("session_token", "demo-token-unesr", path="/")
+            return response
+
+        return JSONResponse(status_code=401, content={"detail": "Credenciales inválidas"})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"detail": str(e), "status": "error"})
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
