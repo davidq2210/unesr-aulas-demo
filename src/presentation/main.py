@@ -2,9 +2,9 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 def _get_active_db_path():
-if os.environ.get("VERCEL") == "1":
-    return "/tmp/unesr_aulas.db"
-return os.environ.get("DB_PATH", "unesr_aulas.db")
+    if os.environ.get("VERCEL") == "1":
+        return "/tmp/unesr_aulas.db"
+    return os.environ.get("DB_PATH", "unesr_aulas.db")
 from fastapi.responses import JSONResponse
 import os
 import sys
