@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date
 from src.infrastructure.database.connection import get_db_connection
 from src.infrastructure.database.schema import init_db_schema
@@ -9,17 +10,30 @@ def seed_database(db_path: str = "unesr_aulas.db", force_update: bool = False) -
     Inicializa de manera idempotente la base de datos con los datos institucionales
     completos de la UNESR Núcleo Los Teques (12 aulas, catálogo de pregrado y postgrado,
     docentes, usuarios y reservas de ejemplo).
-    Si force_update es True, inserta los nuevos programas y materias sin borrar datos existentes.
+    Compatible tanto con SQLite local como con Supabase PostgreSQL.
     """
     conn = get_db_connection(db_path)
-    init_db_schema(conn)
+    
+    # Solo inicializar esquema DDL si es SQLite local
+    if isinstance(conn, sqlite3.Connection):
+        init_db_schema(conn)
 
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM aulas;")
     count_aulas = cursor.fetchone()[0]
 
-    # Iniciar transacción atómica
-    conn.execute("BEGIN IMMEDIATE;")
+    # Iniciar transacción
+    if isinstance(conn, sqlite3.Connection):
+        try:
+            conn.execute("BEGIN IMMEDIATE;")
+        except Exception:
+            pass
+    else:
+        try:
+            conn.execute("BEGIN;")
+        except Exception:
+            pass
+
     try:
         # 1. 12 Aulas iniciales si no existen
         if count_aulas == 0:
@@ -37,7 +51,6 @@ def seed_database(db_path: str = "unesr_aulas.db", force_update: bool = False) -
 
         # 2. Catálogo Académico Real UNESR Los Teques
         carreras_data = [
-            # PREGRADO
             ("INF-01", "Lic. en Administración mención Informática", "PREGRADO"),
             ("RRHH-01", "Lic. en Administración mención Recursos Humanos", "PREGRADO"),
             ("MER-01", "Lic. en Administración mención Mercadeo", "PREGRADO"),
@@ -49,8 +62,6 @@ def seed_database(db_path: str = "unesr_aulas.db", force_update: bool = False) -
             ("EDU-01", "Lic. en Educación Integral", "PREGRADO"),
             ("EDUA-01", "Lic. en Educación mención Agropecuaria", "PREGRADO"),
             ("EDUP-01", "Lic. en Educación Preescolar", "PREGRADO"),
-
-            # POSTGRADO / DOCTORADO / TALLERES
             ("MCE-01", "Maestría en Ciencias de la Educación", "POSTGRADO"),
             ("MCA-01", "Maestría en Ciencias Administrativas (Gerencia Estratégica)", "POSTGRADO"),
             ("MGP-01", "Maestría en Gerencia Pública", "POSTGRADO"),
@@ -72,45 +83,33 @@ def seed_database(db_path: str = "unesr_aulas.db", force_update: bool = False) -
         cursor.execute("SELECT id, codigo FROM carreras;")
         carr_map = {row["codigo"]: row["id"] for row in cursor.fetchall()}
 
-        # 3. Materias con código y nombre formal
+        # 3. Materias
         materias_data = [
-            # Informática
             (carr_map["INF-01"], "INF-101", "Algoritmos y Programación"),
             (carr_map["INF-01"], "INF-102", "Bases de Datos"),
             (carr_map["INF-01"], "INF-103", "Sistemas de Información"),
             (carr_map["INF-01"], "INF-201", "Redes de Computadoras"),
-            # Recursos Humanos
             (carr_map["RRHH-01"], "RRHH-101", "Gestión del Talento Humano"),
             (carr_map["RRHH-01"], "RRHH-102", "Legislación Laboral Venezolana"),
-            # Mercadeo
             (carr_map["MER-01"], "MER-101", "Investigación de Mercados"),
             (carr_map["MER-01"], "MER-102", "Estrategias de Comercialización"),
-            # Organización y Sistemas
             (carr_map["OYS-01"], "OYS-101", "Análisis y Diseño de Procesos"),
             (carr_map["OYS-01"], "OYS-102", "Manuales Administrativos"),
-            # Recursos Materiales y Financieros
             (carr_map["RMF-01"], "RMF-201", "Presupuesto y Finanzas"),
             (carr_map["RMF-01"], "RMF-202", "Contabilidad de Costos"),
-            # Empresas Agropecuarias & Agroecología
             (carr_map["AGRO-01"], "AGR-101", "Administración de Fincas y Unidades de Producción"),
             (carr_map["AGROE-01"], "AGC-101", "Sistemas Agroecológicos Sostenibles"),
-            # Medicina Veterinaria
             (carr_map["MEDV-01"], "VET-101", "Anatomía y Fisiología Animal"),
             (carr_map["MEDV-01"], "VET-102", "Salud Pública y Epidemiología Veterinaria"),
-            # Educación Integral, Agropecuaria y Preescolar
             (carr_map["EDU-01"], "EDU-301", "Andragogía y Métodos de Aprendizaje"),
             (carr_map["EDU-01"], "EDU-302", "Didáctica de la Lectoescritura"),
             (carr_map["EDUA-01"], "EDA-201", "Pedagogía de la Producción Agrícola"),
             (carr_map["EDUP-01"], "EDP-201", "Desarrollo Psicomotor Infantil"),
-
-            # Postgrado
             (carr_map["MCE-01"], "MCE-501", "Epistemología de la Educación Andragógica"),
             (carr_map["MCE-01"], "MCE-502", "Diseño Curricular Universitario"),
             (carr_map["MCA-01"], "MCA-601", "Planificación y Gerencia Estratégica"),
             (carr_map["MCA-01"], "MCA-602", "Toma de Decisiones Financieras"),
             (carr_map["MGP-01"], "MGP-501", "Políticas Públicas y Estado"),
-
-            # Doctorado
             (carr_map["DCE-01"], "DCE-701", "Seminario de Investigación Doctoral I"),
             (carr_map["DCA-01"], "DCA-701", "Teoría Organizacional y Paradigmas Administrativos"),
         ]
@@ -125,7 +124,7 @@ def seed_database(db_path: str = "unesr_aulas.db", force_update: bool = False) -
                 (c_id, cod, nom)
             )
 
-        # 4. Padrón Docente
+        # 4. Docentes
         docentes_data = [
             ("V-15234567", "Pedro", "Pérez", "pperez@unesr.edu.ve"),
             ("V-16890123", "María", "Rodríguez", "mrodriguez@unesr.edu.ve"),
@@ -147,7 +146,7 @@ def seed_database(db_path: str = "unesr_aulas.db", force_update: bool = False) -
         cursor.execute("SELECT id, cedula FROM docentes;")
         doc_map = {row["cedula"]: row["id"] for row in cursor.fetchall()}
 
-        # 5. Usuarios Iniciales RBAC
+        # 5. Usuarios RBAC
         cursor.execute(
             """
             INSERT INTO usuarios (username, email, password_hash, rol, activo)
@@ -173,7 +172,7 @@ def seed_database(db_path: str = "unesr_aulas.db", force_update: bool = False) -
             ("estudiante", "estudiante@unesr.edu.ve", hash_password("consulta123"), "ESTUDIANTE")
         )
 
-        # 6. Reserva de Ejemplo inicial (si no hay reservas aún)
+        # 6. Reserva de Ejemplo inicial
         cursor.execute("SELECT COUNT(*) FROM reservas;")
         if cursor.fetchone()[0] == 0:
             cursor.execute("SELECT id FROM usuarios WHERE username = 'admin';")
@@ -191,9 +190,17 @@ def seed_database(db_path: str = "unesr_aulas.db", force_update: bool = False) -
                 (doc_map["V-15234567"], mat_id, hoy, admin_uid)
             )
 
-        conn.execute("COMMIT;")
+        # Confirmar transacción
+        if hasattr(conn, "commit"):
+            conn.commit()
+        else:
+            conn.execute("COMMIT;")
+            
     except Exception:
-        conn.execute("ROLLBACK;")
+        if hasattr(conn, "rollback"):
+            conn.rollback()
+        else:
+            conn.execute("ROLLBACK;")
         raise
     finally:
         cursor.close()
