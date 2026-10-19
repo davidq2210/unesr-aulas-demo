@@ -4,20 +4,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
 
-def _resolve_path(db_path: str = None) -> str:
+def get_db_path() -> str:
     if os.environ.get("VERCEL") == "1":
         return "/tmp/unesr_aulas.db"
-    if db_path is None:
-        return os.environ.get("DB_PATH", "unesr_aulas.db")
-    # Si viene una ruta relativa en Vercel, forzar /tmp
-    if os.environ.get("VERCEL") == "1" or not os.path.isabs(db_path):
-        if os.environ.get("VERCEL") == "1":
-            return "/tmp/unesr_aulas.db"
-    return str(Path(db_path).resolve())
+    return os.environ.get("DB_PATH", "unesr_aulas.db")
 
 class DatabaseManager:
     def __init__(self, db_path: str = None) -> None:
-        self.db_path = _resolve_path(db_path)
+        self.db_path = get_db_path() if db_path is None else db_path
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
@@ -37,9 +31,9 @@ class DatabaseManager:
             conn.close()
 
 def get_db_connection(db_path: str = None) -> sqlite3.Connection:
-    target_path = _resolve_path(db_path)
-    Path(target_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(target_path, timeout=15.0, isolation_level=None)
+    target = get_db_path() if db_path is None else db_path
+    Path(target).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(target, timeout=15.0, isolation_level=None)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     if os.environ.get("VERCEL") == "1":

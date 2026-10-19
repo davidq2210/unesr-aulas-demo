@@ -1,11 +1,3 @@
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-def _get_active_db_path():
-    if os.environ.get("VERCEL") == "1":
-        return "/tmp/unesr_aulas.db"
-    return os.environ.get("DB_PATH", "unesr_aulas.db")
-from fastapi.responses import JSONResponse
 import os
 import sys
 from datetime import date, time, timedelta
@@ -92,7 +84,7 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     db_path = getattr(app.state, "db_path", DB_FILE_PATH)
-    seed_database("/tmp/unesr_aulas.db" if os.environ.get("VERCEL") == "1" else db_path, force_update=True)
+    seed_database(db_path, force_update=True)
 
 
 # -------------------------------------------------------------
@@ -135,7 +127,7 @@ def handle_permiso_denegado(request: Request, exc: PermisoDenegadoError):
 @app.post("/api/v1/auth/login", response_model=LoginResponse)
 def login(req: LoginRequest, request: Request):
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     user_repo = SqliteUsuarioRepository(conn)
     user = user_repo.obtener_por_username(req.username)
     conn.close()
@@ -170,7 +162,7 @@ def consultar_cartelera(
 ):
     fecha_consulta = date.fromisoformat(fecha) if fecha else date.today()
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     adapter = SqliteCarteleraQueryAdapter(conn)
     filtro = ConsultarCarteleraFiltroDTO(fecha=fecha_consulta, aula_id=aula_id)
     items = adapter.consultar(filtro)
@@ -207,7 +199,7 @@ def consultar_cartelera_semanal(
         f_inicio = f_inicio - timedelta(days=f_inicio.weekday())
 
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     adapter = SqliteCarteleraQueryAdapter(conn)
     items = adapter.consultar_semanal(f_inicio, aula_id)
     conn.close()
@@ -235,7 +227,7 @@ def consultar_cartelera_semanal(
 @app.get("/api/v1/aulas")
 def listar_aulas(request: Request):
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     repo = SqliteAulaRepository(conn)
     aulas = repo.listar_todas()
     conn.close()
@@ -258,7 +250,7 @@ def crear_aula(
     user=Depends(require_role(["DIRECTIVO", "COORDINADOR"]))
 ):
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     repo = SqliteAulaRepository(conn)
     aula = Aula(
         id=None,
@@ -306,7 +298,7 @@ def cambiar_estado_aula(
 @app.get("/api/v1/catalogo")
 def obtener_catalogo(request: Request, nivel: Optional[str] = None):
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     repo = SqliteCatalogoRepository(conn)
     carreras = repo.listar_carreras(nivel=nivel)
     materias = repo.listar_materias()
@@ -327,7 +319,7 @@ def agregar_docente(
     user=Depends(require_role(["DIRECTIVO", "COORDINADOR"]))
 ):
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     repo = SqliteCatalogoRepository(conn)
     docente = Docente(id=None, cedula=req.cedula, nombres=req.nombres, apellidos=req.apellidos, email=req.email, activo=True)
     guardado = repo.guardar_docente(docente)
@@ -348,7 +340,7 @@ def agregar_materia(
     user=Depends(require_role(["DIRECTIVO", "COORDINADOR"]))
 ):
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     repo = SqliteCatalogoRepository(conn)
     materia = Materia(id=None, carrera_id=req.carrera_id, codigo=req.codigo, nombre=req.nombre)
     guardada = repo.guardar_materia(materia)
@@ -416,7 +408,7 @@ def eliminar_reserva(
     user=Depends(require_role(["DIRECTIVO", "COORDINADOR", "PROFESOR"]))
 ):
     db_path = get_db_path(request)
-    conn = get_db_connection(_get_active_db_path())
+    conn = get_db_connection(db_path)
     repo = SqliteReservaRepository(conn)
     reserva = repo.obtener_por_id(reserva_id)
     if not reserva:
@@ -457,47 +449,3 @@ def login_view():
 @app.get("/panel", response_class=HTMLResponse)
 def panel_view():
     return HTMLResponse(content=PANEL_HTML)
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-return JSONResponse(
-    status_code=500,
-    content={"detail": str(exc), "type": exc.__class__.__name__}
-)
-
-
-
-
-@app.post("/login")
-async def login(request: Request):
-    from fastapi.responses import JSONResponse
-    try:
-        data = {}
-        content_type = request.headers.get("content-type", "")
-        if "application/json" in content_type:
-            data = await request.json()
-        else:
-            form = await request.form()
-            data = dict(form)
-
-        username = str(data.get("username", "")).strip().lower()
-        password = str(data.get("password", "")).strip()
-
-        if username in ["admin", "directivo"] and password in ["admin", "admin123", "unesr2026"]:
-            response = JSONResponse(
-                status_code=200,
-                content={
-                    "status": "success",
-                    "access_token": "demo-token-unesr",
-                    "token_type": "bearer",
-                    "user": {"username": username, "role": "admin"},
-                    "redirect_url": "/cartelera"
-                }
-            )
-            response.set_cookie("session_token", "demo-token-unesr", path="/")
-            return response
-
-        return JSONResponse(status_code=401, content={"detail": "Credenciales inválidas"})
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"detail": str(e)})
-
