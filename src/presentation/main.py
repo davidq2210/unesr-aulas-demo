@@ -462,3 +462,40 @@ return JSONResponse(
     status_code=500,
     content={"detail": str(exc), "type": exc.__class__.__name__}
 )
+
+
+@app.post("/login")
+async def login(request: Request):
+try:
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        data = await request.json()
+    else:
+        form = await request.form()
+        data = dict(form)
+        
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", "")).strip()
+    
+    # Validar credenciales demo para directivos
+    if (username == "admin" and password in ["admin", "admin123"]) or (username == "directivo" and password == "unesr2026"):
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "access_token": "demo-token-unesr-2026",
+                "token_type": "bearer",
+                "user": {"username": username, "role": "admin"},
+                "redirect_url": "/cartelera"
+            }
+        )
+    else:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Usuario o contraseña incorrectos", "status": "error"}
+        )
+except Exception as exc:
+    return JSONResponse(
+        status_code=400,
+        content={"detail": f"Error procesando solicitud: {str(exc)}", "status": "error"}
+    )
