@@ -84,7 +84,7 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     db_path = getattr(app.state, "db_path", DB_FILE_PATH)
-    seed_database(db_path, force_update=True)
+    seed_database("/tmp/unesr_aulas.db" if os.environ.get("VERCEL") == "1" else db_path, force_update=True)
 
 
 # -------------------------------------------------------------

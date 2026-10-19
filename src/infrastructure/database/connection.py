@@ -1,27 +1,55 @@
+import os
 import sqlite3
-from typing import Optional
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Generator
 
+class DatabaseManager:
+    def __init__(self, db_path: str = None) -> None:
+        if db_path is None:
+            if os.environ.get("VERCEL") == "1":
+                db_path = "/tmp/unesr_aulas.db"
+            else:
+                db_path = os.environ.get("DB_PATH", "unesr_aulas.db")
+        self.db_path = str(Path(db_path).resolve())
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-def get_db_connection(db_path: str = "unesr_aulas.db") -> sqlite3.Connection:
-    """
-    Retorna una conexión a SQLite configurada con los pragmas de alto rendimiento y concurrencia:
-    - journal_mode=WAL: Permite múltiples lectores simultáneos sin bloqueo de escritores.
-    - busy_timeout=5000: Espera hasta 5 segundos si existe una transacción de escritura activa.
-    - foreign_keys=ON: Garantiza integridad referencial relacional.
-    - isolation_level=None: Habilita el control manual explícito de transacciones atómicas (BEGIN IMMEDIATE / COMMIT / ROLLBACK).
-    """
-    conn = sqlite3.connect(
-        database=db_path,
-        timeout=5.0,
-        check_same_thread=False,
-        isolation_level=None
-    )
+    @contextmanager
+    def get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        conn = sqlite3.connect(self.db_path, timeout=10.0, isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Vercel no soporta WAL en /tmp por bloqueos de memoria compartida
+        if os.environ.get("VERCEL") == "1":
+            cursor.execute("PRAGMA journal_mode=MEMORY;")
+        else:
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            
+        cursor.execute("PRAGMA busy_timeout=5000;")
+        cursor.execute("PRAGMA foreign_keys=ON;")
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+def get_db_connection(db_path: str = None) -> sqlite3.Connection:
+    if db_path is None:
+        if os.environ.get("VERCEL") == "1":
+            db_path = "/tmp/unesr_aulas.db"
+        else:
+            db_path = os.environ.get("DB_PATH", "unesr_aulas.db")
+    
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path, timeout=10.0, isolation_level=None)
     conn.row_factory = sqlite3.Row
-
     cursor = conn.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL;")
+    
+    if os.environ.get("VERCEL") == "1":
+        cursor.execute("PRAGMA journal_mode=MEMORY;")
+    else:
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        
     cursor.execute("PRAGMA busy_timeout=5000;")
     cursor.execute("PRAGMA foreign_keys=ON;")
-    cursor.close()
-
     return conn
