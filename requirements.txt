@@ -1,8 +1,5 @@
 fastapi
 uvicorn
 pydantic
-sqlalchemy
-bcrypt
-pyjwt
 jinja2
 python-multipart
