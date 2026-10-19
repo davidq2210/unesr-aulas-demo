@@ -464,38 +464,36 @@ return JSONResponse(
 )
 
 
+
 @app.post("/login")
-async def login(request: Request):
-try:
-    content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        data = await request.json()
-    else:
-        form = await request.form()
-        data = dict(form)
+async def login_seguro(request: Request):
+    from fastapi.responses import JSONResponse
+    try:
+        data = {}
+        if "application/json" in request.headers.get("content-type", ""):
+            data = await request.json()
+        else:
+            form = await request.form()
+            data = dict(form)
+            
+        username = str(data.get("username", "")).strip().lower()
+        password = str(data.get("password", "")).strip()
         
-    username = str(data.get("username", "")).strip()
-    password = str(data.get("password", "")).strip()
-    
-    # Validar credenciales demo para directivos
-    if (username == "admin" and password in ["admin", "admin123"]) or (username == "directivo" and password == "unesr2026"):
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "success",
-                "access_token": "demo-token-unesr-2026",
-                "token_type": "bearer",
-                "user": {"username": username, "role": "admin"},
-                "redirect_url": "/cartelera"
-            }
-        )
-    else:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Usuario o contraseña incorrectos", "status": "error"}
-        )
-except Exception as exc:
-    return JSONResponse(
-        status_code=400,
-        content={"detail": f"Error procesando solicitud: {str(exc)}", "status": "error"}
-    )
+        # Validación local sin tocar la base de datos (evita errores de lectura en Vercel)
+        if username in ["admin", "directivo"] and password in ["admin", "admin123", "unesr2026"]:
+            res = JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "access_token": "demo-token-unesr",
+                    "token_type": "bearer",
+                    "user": {"username": username, "role": "admin"},
+                    "redirect_url": "/cartelera"
+                }
+            )
+            res.set_cookie("session_token", "demo-token-unesr", path="/")
+            return res
+            
+        return JSONResponse(status_code=401, content={"detail": "Credenciales inválidas", "status": "error"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e), "status": "error"})
