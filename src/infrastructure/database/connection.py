@@ -5,12 +5,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
 
+IMPORT_ERROR = None
 try:
     import psycopg2
     from psycopg2.extras import DictCursor
     HAS_PSYCOPG2 = True
-except ImportError:
+except Exception as err:
     HAS_PSYCOPG2 = False
+    IMPORT_ERROR = err
 
 
 class PostgresCursorWrapper:
@@ -27,7 +29,6 @@ class PostgresCursorWrapper:
         pg_query = re.sub(r"\?", "%s", query)
         stripped = pg_query.strip().rstrip(";")
 
-        # Si es un INSERT sin RETURNING, agregamos RETURNING id para emular lastrowid
         es_insert = stripped.lstrip().upper().startswith("INSERT INTO")
         tiene_returning = "RETURNING" in stripped.upper()
 
@@ -40,7 +41,6 @@ class PostgresCursorWrapper:
                     self._lastrowid = row[0] if isinstance(row, (tuple, list)) else row.get("id", row[0])
                 return res
             except Exception:
-                # Si la tabla no tiene columna 'id', reintentar con la query original
                 self._cursor.connection.rollback()
                 self._lastrowid = None
                 return self._cursor.execute(pg_query, vars)
@@ -116,10 +116,7 @@ def get_target_db_path(db_path: str = None) -> str:
 def get_db_connection(db_path: str = None) -> Any:
     """
     Retorna una conexión a base de datos.
-    - Si se pasa un db_path explícito correspondiente a un archivo SQLite
-      (ej. tests de concurrencia o aislamiento 'test_*.db', ':memory:'), usa SQLite.
-    - Si no se especifica db_path y existe DATABASE_URL, se conecta a Supabase / PostgreSQL.
-    - En cualquier otro escenario, recurre a SQLite por defecto.
+    Diagnóstica con logs explícitos para Vercel.
     """
     database_url = os.environ.get("DATABASE_URL")
 
@@ -128,14 +125,23 @@ def get_db_connection(db_path: str = None) -> Any:
         and (db_path.endswith(".db") or db_path == ":memory:" or "/" in db_path)
     )
 
-    if database_url and HAS_PSYCOPG2 and not es_sqlite_explicito:
-        clean_url = database_url.strip('"').strip("'")
-        if "sslmode=" not in clean_url:
-            clean_url += ("&" if "?" in clean_url else "?") + "sslmode=require"
-        raw_conn = psycopg2.connect(clean_url)
-        return PostgresConnectionWrapper(raw_conn)
+    if database_url and not es_sqlite_explicito:
+        if not HAS_PSYCOPG2:
+            print(f"[MOTOR DB] ❌ ERROR AL IMPORTAR PSYCOPG2: {IMPORT_ERROR}")
+        else:
+            try:
+                clean_url = database_url.strip('"').strip("'")
+                if "sslmode=" not in clean_url:
+                    clean_url += ("&" if "?" in clean_url else "?") + "sslmode=require"
+                print(f"[MOTOR DB] 🟢 CONECTANDO A SUPABASE POSTGRESQL...")
+                raw_conn = psycopg2.connect(clean_url)
+                print(f"[MOTOR DB] ✅ CONEXION A SUPABASE ESTABLECIDA")
+                return PostgresConnectionWrapper(raw_conn)
+            except Exception as e:
+                print(f"[MOTOR DB] ❌ FALLO CONEXION A SUPABASE: {e}")
 
-    # Modo SQLite local / Tests
+    # Fallback SQLite
+    print(f"[MOTOR DB] ⚠️ USANDO SQLITE LOCAL (db_path={db_path})")
     target = get_target_db_path(db_path)
     Path(target).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(target, timeout=15.0, isolation_level=None)
