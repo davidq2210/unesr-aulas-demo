@@ -5,14 +5,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
 
-IMPORT_ERROR = None
 try:
     import psycopg2
     from psycopg2.extras import DictCursor
     HAS_PSYCOPG2 = True
 except Exception as err:
     HAS_PSYCOPG2 = False
-    IMPORT_ERROR = err
 
 
 class PostgresCursorWrapper:
@@ -23,7 +21,6 @@ class PostgresCursorWrapper:
     def execute(self, query: str, vars: Any = None) -> Any:
         pg_query = re.sub(r"\?", "%s", query)
         stripped = pg_query.strip().rstrip(";")
-
         es_insert = stripped.lstrip().upper().startswith("INSERT INTO")
         tiene_returning = "RETURNING" in stripped.upper()
 
@@ -106,29 +103,20 @@ def get_target_db_path(db_path: str = None) -> str:
 
 def get_db_connection(db_path: str = None) -> Any:
     database_url = os.environ.get("DATABASE_URL")
+    es_test = db_path is not None and ("test_" in db_path or db_path == ":memory:")
 
-    es_test_aislado = (
-        db_path is not None 
-        and ("test_" in db_path or db_path == ":memory:")
-    )
+    # En producción Vercel o con DATABASE_URL, Supabase tiene prioridad absoluta
+    if database_url and not es_test:
+        clean_url = database_url.strip('"').strip("'")
+        if "sslmode=" not in clean_url:
+            clean_url += ("&" if "?" in clean_url else "?") + "sslmode=require"
+        try:
+            raw_conn = psycopg2.connect(clean_url)
+            return PostgresConnectionWrapper(raw_conn)
+        except Exception as e:
+            print(f"[MOTOR DB] ❌ ERROR CONEXION SUPABASE: {type(e).__name__} -> {e}")
 
-    if database_url and not es_test_aislado:
-        if not HAS_PSYCOPG2:
-            print(f"[MOTOR DB] ❌ PSYCOPG2 NO DISPONIBLE EN VERCEL: {IMPORT_ERROR}")
-        else:
-            try:
-                clean_url = database_url.strip('"').strip("'")
-                if "sslmode=" not in clean_url:
-                    clean_url += ("&" if "?" in clean_url else "?") + "sslmode=require"
-                print("[MOTOR DB] 🟢 CONECTANDO A SUPABASE POSTGRESQL...")
-                raw_conn = psycopg2.connect(clean_url)
-                print("[MOTOR DB] ✅ CONEXION A SUPABASE ESTABLECIDA")
-                return PostgresConnectionWrapper(raw_conn)
-            except Exception as e:
-                print(f"[MOTOR DB] ❌ EXCEPCION CONEXION SUPABASE: {type(e).__name__} - {e}")
-
-    # Fallback SQLite
-    print(f"[MOTOR DB] ⚠️ USANDO SQLITE LOCAL (db_path={db_path}, has_url={bool(database_url)}, has_pg={HAS_PSYCOPG2})")
+    # Fallback SQLite solo para pruebas locales
     target = get_target_db_path(db_path)
     Path(target).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(target, timeout=15.0, isolation_level=None)
