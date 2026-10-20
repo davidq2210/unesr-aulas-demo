@@ -105,14 +105,8 @@ def get_target_db_path(db_path: str = None) -> str:
 
 
 def get_db_connection(db_path: str = None) -> Any:
-    """
-    Retorna conexión a base de datos:
-    - Si existe DATABASE_URL y no es un test explícito (test_*.db o :memory:), CONECTA A SUPABASE.
-    - De lo contrario, usa SQLite local.
-    """
     database_url = os.environ.get("DATABASE_URL")
 
-    # Solo considerar SQLite explícito si se pide aislamiento de tests
     es_test_aislado = (
         db_path is not None 
         and ("test_" in db_path or db_path == ":memory:")
@@ -120,7 +114,7 @@ def get_db_connection(db_path: str = None) -> Any:
 
     if database_url and not es_test_aislado:
         if not HAS_PSYCOPG2:
-            print(f"[MOTOR DB] ❌ FALLO IMPORT PSYCOPG2: {IMPORT_ERROR}")
+            print(f"[MOTOR DB] ❌ PSYCOPG2 NO DISPONIBLE EN VERCEL: {IMPORT_ERROR}")
         else:
             try:
                 clean_url = database_url.strip('"').strip("'")
@@ -131,10 +125,10 @@ def get_db_connection(db_path: str = None) -> Any:
                 print("[MOTOR DB] ✅ CONEXION A SUPABASE ESTABLECIDA")
                 return PostgresConnectionWrapper(raw_conn)
             except Exception as e:
-                print(f"[MOTOR DB] ❌ FALLO CONEXION A SUPABASE: {e}")
+                print(f"[MOTOR DB] ❌ EXCEPCION CONEXION SUPABASE: {type(e).__name__} - {e}")
 
     # Fallback SQLite
-    print(f"[MOTOR DB] ⚠️ USANDO SQLITE LOCAL (db_path={db_path}, has_url={bool(database_url)})")
+    print(f"[MOTOR DB] ⚠️ USANDO SQLITE LOCAL (db_path={db_path}, has_url={bool(database_url)}, has_pg={HAS_PSYCOPG2})")
     target = get_target_db_path(db_path)
     Path(target).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(target, timeout=15.0, isolation_level=None)
